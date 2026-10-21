@@ -1,0 +1,94 @@
+# Python: сервис на FastAPI с распространённой раскладкой app/ по слоям:
+# api (роутеры) → services → repositories → models и schemas.
+# Каталог, которого нет в проекте, просто не даёт совпадений.
+config_version: 1
+languages:
+  enabled: [python]
+paths:
+  include: ["**"]
+  exclude:
+    - "**/tests/**"
+    - "**/test_*.py"
+    - "**/*_test.py"
+    - "**/conftest.py"
+    - "alembic/**" # Миграции Alembic и env.py.
+    - "**/migrations/**"
+    - "**/__pycache__/**"
+vendor:
+  paths: [".venv/**", "venv/**", "**/site-packages/**", "node_modules/**"]
+  mode: collapsed
+  parse: lazy
+limits:
+  file_lines: {warn: 400, error: 800}
+  function_lines: {warn: 40, error: 100}
+  functions_per_file: {warn: 20, error: 40}
+  methods_per_class: {warn: 15, error: 30}
+  function_params: {warn: 4, error: 7}
+  cyclomatic_complexity: {warn: 10, error: 20}
+  cognitive_complexity: {warn: 15, error: 30}
+  nesting_depth: {warn: 4, error: 6}
+  lcom4: {warn: 2, error: 6} # Несколько независимых групп методов в классе.
+  module_cycle: {warn: 0} # Цикл между модулями; блокирует CI с --fail-on-warn.
+  by_path:
+    # Обработчики получают path- и query-параметры и зависимости через Depends.
+    - glob: "app/api/**"
+      function_params: {warn: 6, error: 10}
+    - glob: "app/routers/**"
+      function_params: {warn: 6, error: 10}
+    # Методы репозитория get, list, create, delete независимы по замыслу.
+    - glob: "app/repositories/**"
+      lcom4: {warn: 10, error: 20}
+    - glob: "app/crud/**"
+      lcom4: {warn: 10, error: 20}
+sets:
+  api: ["dir:app/api", "dir:app/routers"]
+  services: ["dir:app/services"]
+  repositories: ["dir:app/repositories", "dir:app/crud"]
+  models: ["dir:app/models", "dir:app/schemas"]
+external:
+  capture_args: literal
+  max_arg_length: 160
+  redact: ['(?i)(token|password|secret|api[_-]?key)=[^&\s]+']
+  rules:
+    # Ведущий * нужен, потому что внутри пакета с __init__.py движок
+    # дополняет имя импорта именем пакета. Методы клиентов распознаются
+    # через типизированный атрибут или параметр, например
+    # self.client: httpx.AsyncClient; объект, созданный в той же функции,
+    # до класса не разрешается. Встроенный каталог знает requests,
+    # httpx.get, psycopg, SQLAlchemy execute, pika, subprocess, socket.
+    - {category: http, pattern: '*httpx.AsyncClient.*', library: httpx, operation: request}
+    - {category: http, pattern: '*httpx.get', library: httpx, operation: get}
+    - {category: http, pattern: '*httpx.post', library: httpx, operation: post}
+    - {category: db, pattern: '*Session.execute', library: SQLAlchemy, operation: execute}
+    - {category: cache, pattern: '*redis.Redis.*', library: redis, operation: command}
+    - {category: queue, pattern: '*.delay', library: celery, operation: delay}
+    - {category: queue, pattern: '*.apply_async', library: celery, operation: apply_async}
+architecture:
+  enabled: true
+  profile: strict
+  # Направление зависимостей: api → services → repositories → models.
+  # Модели и схемы ничего не знают о слоях выше, репозитории не знают о сервисах и API.
+  layers:
+    - name: api
+      selectors: ["dir:app/api", "dir:app/routers"]
+    - name: services
+      selectors: ["dir:app/services"]
+    - name: repositories
+      selectors: ["dir:app/repositories", "dir:app/crud"]
+    - name: models
+      selectors: ["dir:app/models", "dir:app/schemas"]
+  forbidden_dependencies:
+    - {from: models, to: repositories, principle: DIP}
+    - {from: models, to: services, principle: DIP}
+    - {from: models, to: api, principle: DIP}
+    - {from: repositories, to: services, principle: DIP}
+    - {from: repositories, to: api, principle: DIP}
+    - {from: services, to: api, principle: DIP}
+  # main.py и dependencies.py собирают приложение из всех слоёв. Запись
+  # действует, только если их накрывает селектор слоя; иначе она безвредна.
+  composition_roots: ["file:app/main.py", "file:app/dependencies.py"]
+cache:
+  enabled: true
+  path: .analyzer-cache
+output:
+  formats: [console]

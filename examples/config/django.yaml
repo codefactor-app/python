@@ -1,0 +1,100 @@
+# Python: проект на Django со стандартной раскладкой startproject/startapp.
+# Слои описаны по именам модулей приложений: models, services, views.
+# Модуль, которого нет в проекте, просто не даёт совпадений.
+config_version: 1
+languages:
+  enabled: [python]
+paths:
+  include: ["**"]
+  exclude:
+    - "**/tests/**"
+    - "**/test_*.py"
+    - "**/*_test.py"
+    - "**/conftest.py"
+    - "**/migrations/**" # makemigrations генерирует их автоматически.
+    - "**/settings.py" # Настройки и точки входа описывают сборку, а не структуру.
+    - "**/settings/**"
+    - "**/wsgi.py"
+    - "**/asgi.py"
+    - "manage.py"
+    - "**/__pycache__/**"
+    - "staticfiles/**" # collectstatic.
+vendor:
+  paths: [".venv/**", "venv/**", "**/site-packages/**", "node_modules/**"]
+  mode: collapsed
+  parse: lazy
+limits:
+  file_lines: {warn: 400, error: 800}
+  function_lines: {warn: 40, error: 100}
+  functions_per_file: {warn: 20, error: 40}
+  methods_per_class: {warn: 15, error: 30}
+  function_params: {warn: 4, error: 7}
+  cyclomatic_complexity: {warn: 10, error: 20}
+  cognitive_complexity: {warn: 15, error: 30}
+  nesting_depth: {warn: 4, error: 6}
+  lcom4: {warn: 2, error: 6} # Несколько независимых групп методов в классе.
+  module_cycle: {warn: 0} # Цикл между модулями; блокирует CI с --fail-on-warn.
+  by_path:
+    # Модели смешивают поля, properties, менеджеры и бизнес-методы.
+    - glob: "**/models.py"
+      methods_per_class: {warn: 30, error: 60}
+      lcom4: {warn: 30, error: 60}
+    - glob: "**/models/**"
+      methods_per_class: {warn: 30, error: 60}
+      lcom4: {warn: 30, error: 60}
+    # Представления: функции получают request и параметры URL, методы
+    # class-based views и действия ViewSet независимы по замыслу.
+    - glob: "**/views.py"
+      lcom4: {warn: 10, error: 20}
+      function_params: {warn: 6, error: 10}
+    - glob: "**/views/**"
+      lcom4: {warn: 10, error: 20}
+      function_params: {warn: 6, error: 10}
+    # ModelAdmin: колонки list_display и действия не связаны между собой.
+    - glob: "**/admin.py"
+      lcom4: {warn: 20, error: 40}
+sets:
+  views: ["glob:**/views.py", "glob:**/views/**", "glob:**/urls.py", "glob:**/admin.py", "glob:**/forms.py", "glob:**/serializers.py", "glob:**/management/**", "glob:**/templatetags/**"]
+  services: ["glob:**/services.py", "glob:**/services/**", "glob:**/selectors.py", "glob:**/selectors/**", "glob:**/tasks.py", "glob:**/signals.py"]
+  models: ["glob:**/models.py", "glob:**/models/**", "glob:**/managers.py"]
+external:
+  capture_args: literal
+  max_arg_length: 160
+  redact: ['(?i)(token|password|secret|api[_-]?key)=[^&\s]+']
+  rules:
+    # Ведущий * нужен, потому что внутри пакета с __init__.py движок
+    # дополняет имя импорта именем пакета. *.objects.* помечает обращения
+    # к ORM через менеджер модели. Встроенный каталог знает requests,
+    # httpx, psycopg, SQLAlchemy, pika, subprocess, socket.
+    - {category: db, pattern: '*.objects.*', library: django-orm, operation: queryset}
+    - {category: mail, pattern: '*django.core.mail.send_mail', library: django-mail, operation: send_mail}
+    - {category: cache, pattern: '*django.core.cache.cache.*', library: django-cache, operation: cache}
+    - {category: queue, pattern: '*.delay', library: celery, operation: delay}
+    - {category: queue, pattern: '*.apply_async', library: celery, operation: apply_async}
+    - {category: http, pattern: '*requests.get', library: requests, operation: get}
+    - {category: http, pattern: '*requests.post', library: requests, operation: post}
+    - {category: storage, pattern: '*boto3.client', library: boto3, operation: client}
+architecture:
+  enabled: true
+  profile: strict
+  # Направление зависимостей: views → services → models.
+  # Модели не вызывают сервисы и представления, сервисы не знают о представлениях.
+  layers:
+    - name: views
+      selectors: ["glob:**/views.py", "glob:**/views/**", "glob:**/urls.py", "glob:**/admin.py", "glob:**/forms.py", "glob:**/serializers.py", "glob:**/management/**", "glob:**/templatetags/**"]
+    - name: services
+      selectors: ["glob:**/services.py", "glob:**/services/**", "glob:**/selectors.py", "glob:**/selectors/**", "glob:**/tasks.py", "glob:**/signals.py"]
+    - name: models
+      selectors: ["glob:**/models.py", "glob:**/models/**", "glob:**/managers.py"]
+  forbidden_dependencies:
+    - {from: models, to: services, principle: DIP}
+    - {from: models, to: views, principle: DIP}
+    - {from: services, to: views, principle: DIP}
+  # AppConfig.ready() подключает сигналы и связывает слои. Запись действует,
+  # только если apps.py накрывает селектор слоя; иначе она безвредна.
+  composition_roots: ["glob:**/apps.py"]
+cache:
+  enabled: true
+  path: .analyzer-cache
+output:
+  formats: [console]

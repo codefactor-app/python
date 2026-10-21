@@ -1,0 +1,171 @@
+# Python: расширенный пример без привязки к фреймворку.
+# Пути, FQN и пороги адаптируйте под проект; слои названы по гексагональной
+# схеме, профили для Django и FastAPI лежат рядом.
+config_version: 1
+languages:
+  enabled: [python]
+  # py и pyi встроены. Пример для скриптов Windows с расширением pyw.
+  extensions: {pyw: python}
+paths:
+  include: ["**"] # Все поддерживаемые файлы выбранного языка, включая корневые.
+  exclude:
+    # Тесты и фикстуры pytest и unittest. Globs чувствительны к регистру.
+    - "**/test/**"
+    - "**/tests/**"
+    - "**/test_*.py"
+    - "**/*_test.py"
+    - "**/conftest.py"
+    - "**/fixtures/**"
+    # Сгенерированный код, миграции, артефакты сборки и окружений.
+    - "**/generated/**"
+    - "**/*_pb2.py"
+    - "**/*_pb2_grpc.py"
+    - "**/migrations/**"
+    - "**/__pycache__/**"
+    - "build/**"
+    - "dist/**"
+    - ".tox/**"
+    - ".nox/**"
+    - "docs/conf.py" # Конфигурация Sphinx.
+vendor:
+  paths: [".venv/**", "venv/**", "**/site-packages/**", "vendor/**", "node_modules/**"]
+  mode: collapsed
+  parse: lazy # none запрещает раскрытие зависимостей; full разбирает сразу.
+limits:
+  file_lines: {warn: 400, error: 800}
+  function_lines: {warn: 40, error: 100}
+  functions_per_file: {warn: 20, error: 40}
+  methods_per_class: {warn: 15, error: 30}
+  fields_per_class: {warn: 10, error: 20}
+  function_params: {warn: 4, error: 7}
+  cyclomatic_complexity: {warn: 10, error: 20}
+  cognitive_complexity: {warn: 15, error: 30}
+  nesting_depth: {warn: 4, error: 6}
+  return_points: {warn: 4, error: 8}
+  inheritance_depth: {warn: 3, error: 5}
+  types_per_file: {warn: 10, error: 20} # Несколько классов в модуле — норма Python.
+  # LCOM4 > 1 означает несколько независимых групп методов. Обработчики,
+  # DTO и классы с properties дают высокие значения по замыслу: см. by_path.
+  lcom4: {warn: 2, error: 6}
+  fan_in: {warn: 20, error: 40}
+  fan_out: {warn: 10, error: 20}
+  halstead_volume: {warn: 1000, error: 2000}
+  duplicate_functions: {warn: 0, error: 5}
+  # Единственный способ сделать цикл между модулями блокирующим в CI:
+  # архитектурные находки arch_cycle и arch_boundary код выхода не меняют.
+  module_cycle: {error: 0}
+  # Все числовые пороги — верхние границы. comment_ratio и
+  # maintainability_index не задают минимальную долю/минимальный индекс.
+  # by_language нужен только при нескольких языках в languages.enabled:
+  # для единственного языка он молча перекрывает общий порог выше.
+  by_path:
+    - glob: "app/presentation/**" # Обработчики и команды: действия независимы по замыслу.
+      lcom4: {warn: 10, error: 20}
+      function_params: {warn: 6, error: 10}
+    - glob: "app/legacy/**" # Замените на каталог существующего долга.
+      function_lines: {warn: 80, error: 160}
+      cyclomatic_complexity: {warn: 15, error: 30}
+  by_entity:
+    # Точный FQN из отчёта metrics: путь модуля, класс и метод через точку.
+    # При src-layout путь начинается с src.
+    'app.application.worker.Worker.run':
+      function_params: {warn: 6, error: 10}
+  aggregates:
+    "cyclomatic_complexity.p95": {warn: 12, error: 25}
+    "function_lines.avg": {warn: 30, error: 60}
+# Иллюстративные каталоги слоёв: замените под структуру своего проекта.
+sets:
+  domain: ["dir:app/domain"]
+  application: ["dir:app/application"]
+  infrastructure: ["dir:app/infrastructure"]
+  presentation: ["dir:app/presentation"]
+  core: ["set:domain", "set:application", "!glob:**/generated/**"]
+external:
+  capture_args: literal
+  max_arg_length: 160
+  redact: ['(?i)(token|password|secret|api[_-]?key)=[^&\s]+']
+  rules:
+    # Встроенный каталог знает requests, httpx, sqlite3, SQLAlchemy, psycopg,
+    # pika, subprocess, socket. Для своей библиотеки укажите цель вызова
+    # module.function или module.Class.method; glob допустим. Ведущий * нужен,
+    # потому что внутри пакета с __init__.py движок дополняет имя импорта
+    # именем пакета. Вызов метода у объекта, созданного в той же функции,
+    # до класса не разрешается: описывайте функции модуля и типизированные
+    # атрибуты.
+    - category: http
+      pattern: '*acme_http.send*'
+      library: acme-http
+      operation: send
+metrics:
+  count_implicit_receiver: false # self и cls не считаются параметрами.
+  count_variadic_parameters: true # *args и **kwargs дают по одному параметру.
+  count_private_methods: true
+  count_accessors: true # Properties и аксессоры считаются методами класса.
+  count_nested_functions: true # Вложенные функции и замыкания считаются в functions_per_file.
+  histogram_bins: 10
+graph:
+  max_implementations: 50
+algorithmic_complexity:
+  enabled: true
+  heuristics: true
+  unknown: info # Для динамического Python стоимость часто неизвестна.
+  # Линейный проход по коллекции в приложении — норма, порог от N^2.
+  limits: {warn: "N^2", error: "N^3"}
+  by_path:
+    - glob: "app/legacy/**"
+      limits: {warn: "N^3"}
+  by_entity:
+    'app.application.worker.Worker.run':
+      unknown: warn
+architecture:
+  enabled: true
+  profile: extended # strict — только циклы, явные границы и структурные копии.
+  disabled_rules: []
+  # Список заменяет default движка целиком; добавлены соглашения Python.
+  exclude:
+    - "**/test/**"
+    - "**/tests/**"
+    - "**/test_*.py"
+    - "**/*_test.py"
+    - "**/conftest.py"
+    - "**/fixtures/**"
+    - "**/generated/**"
+    - "**/migrations/**"
+  rules:
+    arch_cycle: {}
+    arch_boundary: {}
+    arch_dry: {min_tokens: 100, min_statements: 5}
+    arch_srp: {min_methods: 8, min_group_methods: 3}
+    arch_ocp: {min_sites: 3, min_alternatives: 3}
+    arch_factory: {min_sites: 2, min_alternatives: 3}
+    arch_lsp: {}
+    arch_isp: {min_methods: 8, max_usage_ratio: 0.25}
+    arch_demeter: {}
+    arch_stability: {instability_delta: 0.3}
+  # Слои гексагональной архитектуры: зависимости направлены внутрь, к domain.
+  layers:
+    - name: domain
+      selectors: ["dir:app/domain"]
+    - name: application
+      selectors: ["dir:app/application"]
+    - name: infrastructure
+      selectors: ["dir:app/infrastructure"]
+    - name: presentation
+      selectors: ["dir:app/presentation"]
+  forbidden_dependencies:
+    - {from: domain, to: application, principle: DIP}
+    - {from: domain, to: infrastructure, principle: DIP}
+    - {from: domain, to: presentation, principle: DIP}
+    - {from: application, to: infrastructure, principle: DIP}
+    - {from: application, to: presentation, principle: DIP}
+    - {from: infrastructure, to: presentation, principle: DIP}
+  # Файлы сборки приложения исключаются из проверки границ, только если их
+  # накрывает селектор слоя; вне слоёв зависимость и так не проверяется.
+  # Значения для Django и FastAPI смотрите в их профилях.
+  composition_roots: []
+  max_evidence: 50
+cache:
+  enabled: true
+  path: .analyzer-cache
+output:
+  formats: [console] # Для машинного stdout замените на [json].
