@@ -71,9 +71,10 @@ def release_base(config, version):
     return base.replace("{version}", version) if "{version}" in base else base + "/" + version
 
 
-def install():
+def install(*, version=None, destination=None, manifest=None):
     config = json.loads((ROOT / "release.json").read_text())
-    destination = binary_path()
+    version = version if version is not None else os.environ.get('CODEFACTOR_CORE_VERSION', config['version'])
+    destination = Path(destination) if destination is not None else binary_path()
     destination.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = destination.parent / "codefactor.manifest.json"
     override = os.environ.get("CODEFACTOR_BINARY")
@@ -82,17 +83,24 @@ def install():
             shutil.copy2(override, destination)
         destination.chmod(0o755)
         return destination
+    if not isinstance(version, str) or not re.fullmatch(r'latest|[0-9]+\.[0-9]+\.[0-9]+', version):
+        raise RuntimeError('core.version must be latest or X.Y.Z')
     platform = platform_id()
     if platform not in config["platforms"]:
         raise RuntimeError(f"No Codefactor release for {platform}")
-    base = release_base(config, config["version"])
-    manifest = json.loads(download(f"{base}/manifest-{platform}.json", 65536))
+    base = release_base(config, version)
+    manifest = manifest if manifest is not None else json.loads(download(f"{base}/manifest-{platform}.json", 65536))
     filename = f"codefactor-{platform}" + (".exe" if os.name == "nt" else "")
+    if not isinstance(manifest, dict):
+        raise RuntimeError("Invalid Codefactor release manifest")
+    requested = version
     version = manifest.get("version")
     checksum = manifest.get("sha256")
     if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) or (
-        config["version"] != "latest" and version != config["version"]
+        requested != "latest" and version != requested
     ) or manifest.get("platform") != platform or manifest.get("file") != filename or not isinstance(checksum, str) or not re.fullmatch(r"[a-f0-9]{64}", checksum):
+        raise RuntimeError("Invalid Codefactor release manifest")
+    if type(manifest.get("size")) is not int or not 0 < manifest["size"] <= 128 * 1024 * 1024:
         raise RuntimeError("Invalid Codefactor release manifest")
     if destination.is_file() and destination.stat().st_size == manifest.get("size") and hashlib.sha256(destination.read_bytes()).hexdigest() == manifest["sha256"]:
         destination.chmod(0o755)

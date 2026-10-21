@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 from typing import Any, Iterable
-from ._installer import binary_path
+from ._core import ConfigError, argument_context, resolve_binary
 
 __all__ = ["Codefactor", "CodefactorError", "Result", "scan"]
 
@@ -36,7 +36,7 @@ class Codefactor:
     def __init__(self, binary: str | os.PathLike[str] | None = None, timeout: float = 120):
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("Timeout must be positive")
-        self.binary = absolute(binary or os.environ.get("CODEFACTOR_BINARY") or binary_path())
+        self.binary = absolute(binary) if binary is not None else None
         self.timeout = timeout
 
     def scan(self, root: str | os.PathLike[str] = ".", *, config: str | os.PathLike[str] | None = None,
@@ -68,11 +68,15 @@ class Codefactor:
 
     def _run(self, args: list[str]) -> Result:
         try:
-            process = subprocess.run([self.binary, *args], capture_output=True, text=True, encoding="utf-8", timeout=self.timeout, check=False)
+            binary = self.binary or str(resolve_binary(**argument_context(args)))
+        except (OSError, ValueError, RuntimeError) as error:
+            raise CodefactorError(str(error), 3 if isinstance(error, ConfigError) else None) from error
+        try:
+            process = subprocess.run([binary, *args], capture_output=True, text=True, encoding="utf-8", timeout=self.timeout, check=False)
         except subprocess.TimeoutExpired as error:
             raise CodefactorError("Codefactor analysis timed out") from error
         except OSError as error:
-            raise CodefactorError("Cannot start Codefactor binary; reinstall the package or set CODEFACTOR_BINARY") from error
+            raise CodefactorError("Cannot start Codefactor binary; run codefactor core update or check CODEFACTOR_BINARY") from error
         if process.returncode not in {0, 1, 2}:
             raise CodefactorError(f"Codefactor failed ({process.returncode}): {process.stderr.strip()}", process.returncode, process.stderr)
         try:
