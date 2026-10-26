@@ -11,7 +11,7 @@ class ConfigError(RuntimeError):
     pass
 
 
-VALUE_OPTIONS = {'--config', '--file', '--root', '--format', '--out', '--lang', '--limit', '--group-by', '--function', '--from', '--to', '--depth', '--max-paths', '--architecture-profile', '--log-level', '--color', '--port', '--host', '--a', '--b', '--category'}
+VALUE_OPTIONS = {'--baseline', '--baseline-mode', '--capture', '--config', '--file', '--root', '--format', '--out', '--lang', '--limit', '--group-by', '--function', '--from', '--to', '--depth', '--max-paths', '--architecture-profile', '--log-level', '--color', '--port', '--host', '--a', '--b', '--category'}
 
 
 def argument_context(args):

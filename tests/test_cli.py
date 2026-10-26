@@ -8,6 +8,11 @@ import unittest
 
 
 class CLI(unittest.TestCase):
+    def test_snapshot_option_context(self):
+        from codefactor._core import argument_context
+        self.assertEqual(argument_context(["scan", "--baseline", "accepted.yaml", "--baseline-mode", "regressions", "project"])["root"], "project")
+        self.assertEqual(argument_context(["baseline", "create", "--capture", "all", "--root", "project"])["root"], "project")
+
     @unittest.skipIf(os.name == "nt", "POSIX fixture executable")
     def test_transparent_command(self):
         with tempfile.TemporaryDirectory(prefix="codefactor cli ; ") as directory:
